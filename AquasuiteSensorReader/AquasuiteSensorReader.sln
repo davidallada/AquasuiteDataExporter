@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.2.32526.322
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AquasuiteSensorReader", "AquasuiteSensorReader.csproj", "{4CA6D727-3792-481F-82A9-52D31C1BA0BB}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4CA6D727-3792-481F-82A9-52D31C1BA0BB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4CA6D727-3792-481F-82A9-52D31C1BA0BB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4CA6D727-3792-481F-82A9-52D31C1BA0BB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4CA6D727-3792-481F-82A9-52D31C1BA0BB}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {4C7D0159-FAE0-489C-B1AF-2593B24ACE25}
+	EndGlobalSection
+EndGlobal
