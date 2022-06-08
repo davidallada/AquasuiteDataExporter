@@ -10,8 +10,20 @@ public class AquasuiteSharedMemoryExportHelper
     private string filename;
     public MemoryMappedFile mmapped_file;
     public MemoryMappedViewAccessor accessor;
-    private Dictionary<string, Dictionary<string, dynamic>> _data_dict = new Dictionary<string, Dictionary<string, dynamic>>();
-    public Dictionary<string, Dictionary<string, dynamic>> data_dict
+    // Time to wait to auto update background thread in milliseconds
+    private int thread_wait_time = 1000;
+    private Dictionary<string, Dictionary<string, Dictionary<string, dynamic>>> _data_dict = new Dictionary<string, Dictionary<string, Dictionary<string, dynamic>>>();
+    /**
+     * data_dict has form of 
+     * {
+     *    <Device1> {
+     *        <sensorname> {
+     *              <sensordict>
+     *        }
+     *    }
+     * }
+    **/
+    public Dictionary<string, Dictionary<string, Dictionary<string, dynamic>>> data_dict
     {
         get
         {
@@ -36,7 +48,7 @@ public class AquasuiteSharedMemoryExportHelper
     private void init_class_vars(string in_filename)
     {
         this.filename = in_filename;
-        this.data_dict = new Dictionary<string, Dictionary<string, dynamic>>();
+        this.data_dict = new Dictionary<string, Dictionary<string, Dictionary<string, dynamic>>>();
         this.mmapped_file = mmapped_file_from_filename(in_filename);
         this.accessor = accessor_from_mmapped_file(mmapped_file);
         update_data_dict();
@@ -64,6 +76,18 @@ public class AquasuiteSharedMemoryExportHelper
         cancel_worker();
         init_class_vars(in_filename);
         start_worker();
+    }
+
+    public void updateThreadWaitTime(int milliseconds)
+    {
+        cancel_worker();
+        init_class_vars(this.filename);
+        this.thread_wait_time = milliseconds;
+        start_worker();
+    }
+    public int getThreadWaitTime(int milliseconds)
+    {
+        return this.thread_wait_time;
     }
 
     public void InitializeBackgroundWorker()
@@ -102,7 +126,7 @@ public class AquasuiteSharedMemoryExportHelper
 
                 this.data_dict = get_dict_from_xml_doc(xmlDoc);
             }
-            System.Threading.Thread.Sleep(1000);
+            System.Threading.Thread.Sleep(this.thread_wait_time);
         }
         // Temp, dont have to really return anything here
         e.Result = "";
@@ -138,9 +162,9 @@ public class AquasuiteSharedMemoryExportHelper
         return doc;
     }
 
-    public Dictionary<string, Dictionary<string, dynamic>> get_dict_from_xml_doc(XmlDocument xmlDoc)
+    public Dictionary<string, Dictionary<string, Dictionary<string, dynamic>>> get_dict_from_xml_doc(XmlDocument xmlDoc)
     {
-        Dictionary<string, Dictionary<string, dynamic>> device_name_to_values_dict = new Dictionary<string, Dictionary<string, dynamic>>();
+        Dictionary<string, Dictionary<string, Dictionary<string, dynamic>>> whole_dict = new Dictionary<string, Dictionary<string, Dictionary<string, dynamic>>>();
         XmlElement root = xmlDoc.DocumentElement;
         XmlNodeList nodeList = root.SelectNodes("//Logdata/LogDataSet");
         foreach (XmlNode xNode in nodeList)
@@ -152,9 +176,20 @@ public class AquasuiteSharedMemoryExportHelper
             innerDict.Add("unit", xNode.SelectSingleNode("./unit").InnerText);
             innerDict.Add("valueType", xNode.SelectSingleNode("./valueType").InnerText);
             innerDict.Add("device", xNode.SelectSingleNode("./device").InnerText);
-            device_name_to_values_dict.Add(innerDict["device"] + "/" + innerDict["name"], innerDict);
+
+            if (whole_dict.ContainsKey(innerDict["device"]))
+            {
+                whole_dict[innerDict["device"]].Add(innerDict["name"], innerDict);
+            }
+            else
+            {
+                // If we dont have a dict for the given device, create one and add it to the whole_dict
+                Dictionary<string, Dictionary<string, dynamic>> device_dict = new Dictionary<string, Dictionary<string, dynamic>>();
+                device_dict.Add(innerDict["name"], innerDict);
+                whole_dict.Add(innerDict["device"], device_dict);
+            }
         }
-        return device_name_to_values_dict;
+        return whole_dict;
     }
 
     public void update_data_dict()
@@ -164,15 +199,10 @@ public class AquasuiteSharedMemoryExportHelper
         this.data_dict = get_dict_from_xml_doc(xmlDoc);
     }
 
-    public Dictionary<string, Dictionary<string, dynamic>> update_and_return_data_dict()
+    public Dictionary<string, Dictionary<string, Dictionary<string, dynamic>>> update_and_return_data_dict()
     {
         update_data_dict();
         return this.data_dict;
-    }
-
-    public Dictionary<string, dynamic> get_single_dict_from_key(string str_key)
-    {
-        return this.data_dict["str_key"];
     }
 
     public List<string> get_data_dict_keys()
@@ -182,15 +212,21 @@ public class AquasuiteSharedMemoryExportHelper
         return list;
     }
 
-    public void print_all_data()
+    public void print_data_dict()
     {
-        foreach (var kvp in data_dict)
+        foreach (var device_dict in data_dict)
         {
-            Console.WriteLine(kvp.Value.ToString());
+            Console.WriteLine(device_dict.Key);
+            foreach (var sensor_dict in device_dict.Value)
+            {
+                Console.WriteLine(String.Format("\t{0}", sensor_dict.Key));
+                foreach (var sensor_kvp in sensor_dict.Value)
+                {
+                    Console.WriteLine(String.Format("\t\t{0}: {1}", sensor_kvp.Key, sensor_kvp.Value));
+                }
+                
+            }
         }
     }
-
-    // BackgroundWorker with WorkerReportsProgress property and a DoWork and ProgressChanged function
-
 }
 

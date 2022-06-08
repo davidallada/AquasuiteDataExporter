@@ -11,9 +11,10 @@ class Program
         AquasuiteSharedMemoryExportHelper memory_helper = new AquasuiteSharedMemoryExportHelper(fileName);
         for (int i = 0; i < 10; i++)
         {
-            if (memory_helper.data_dict.ContainsKey("QUADRO/Water Temp"))
+            if (memory_helper.data_dict.ContainsKey("QUADRO"))
             {
-                Console.WriteLine(memory_helper.data_dict["QUADRO/Water Temp"]["time"]);
+                Console.WriteLine(memory_helper.data_dict["QUADRO"]["Water Temp"]["time"]);
+                memory_helper.print_data_dict();
             }
             System.Threading.Thread.Sleep(5000);
         }
