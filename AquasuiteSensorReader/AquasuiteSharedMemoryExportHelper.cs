@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO.MemoryMappedFiles;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Xml;
 
@@ -104,7 +106,7 @@ public class AquasuiteSharedMemoryExportHelper
 
         // Get the BackgroundWorker that raised this event.
         BackgroundWorker worker = sender as BackgroundWorker;
-        
+
         // Get the filename of the file to read from
         string file_name = (string)e.Argument;
         MemoryMappedFile mem_mapped_file = MemoryMappedFile.OpenExisting(file_name);
@@ -224,22 +226,51 @@ public class AquasuiteSharedMemoryExportHelper
         return list;
     }
 
-    public void print_data_dict()
+    public string get_data_dict_as_string()
     {
+        string ret_str = "";
         foreach (var device_dict in data_dict)
         {
-            Console.WriteLine(device_dict.Key);
+            //Console.WriteLine(device_dict.Key);
+            ret_str += String.Format("{0}\n", device_dict.Key);
             foreach (var sensor_dict in device_dict.Value)
             {
-                Console.WriteLine(String.Format("\t{0}", sensor_dict.Key));
+                //Console.WriteLine(String.Format("\t{0}", sensor_dict.Key));
+                ret_str += String.Format("\t{0}\n", sensor_dict.Key);
                 foreach (var sensor_kvp in sensor_dict.Value)
                 {
-                    Console.WriteLine(String.Format("\t\t{0}: {1}", sensor_kvp.Key, sensor_kvp.Value));
+                    //Console.WriteLine(String.Format("\t\t{0}: {1}", sensor_kvp.Key, sensor_kvp.Value));
+                    String.Format("\t\t{0}: {1}\n", sensor_kvp.Key, sensor_kvp.Value);
                 }
-                
+
             }
         }
+
+        return ret_str;
+    }
+    public void print_data_dict()
+    {
+        Console.WriteLine(get_data_dict_as_string());
     }
 
+    public dynamic get_single_data_point(string device_name, string sensor_name, string field_name)
+    {
+        string return_str = "N/A";
+
+        if (this.data_dict.ContainsKey(device_name))
+        {
+            var device_dict = this.data_dict[device_name];
+            if (device_dict.ContainsKey(sensor_name))
+            {
+                var sensor_dict =  device_dict[sensor_name];
+                if (sensor_dict.ContainsKey(field_name))
+                {
+                    return sensor_dict[field_name].ToString();
+                }
+            }
+        }
+
+        return return_str;
+    }
 }
 
