@@ -10,87 +10,62 @@ public class AquasuiteSharedMemoryExportHelper
     private string filename;
     public MemoryMappedFile mmapped_file;
     public MemoryMappedViewAccessor accessor;
-    public Dictionary<string, LogDataSet> data_dict;
-    private Dictionary<string, Dictionary<string, dynamic>> _new_data_dict = new Dictionary<string, Dictionary<string, dynamic>>();
-    public Dictionary<string, Dictionary<string, dynamic>> new_data_dict
+    private Dictionary<string, Dictionary<string, dynamic>> _data_dict = new Dictionary<string, Dictionary<string, dynamic>>();
+    public Dictionary<string, Dictionary<string, dynamic>> data_dict
     {
         get
         {
+            // Ensure we are accessing data dict in a thread safe manner
             lock (data_dict_lock)
             {
-                return _new_data_dict;
+                return _data_dict;
             }
         }
         set
         {
+            // Ensure we are setting data dict in a thread safe manner
             lock (data_dict_lock)
             {
-                _new_data_dict = value;
+                _data_dict = value;
             }
         }
     }
     private System.ComponentModel.BackgroundWorker backgroundWorker1;
 
 
-    public class LogDataSet
+    private void init_class_vars(string in_filename)
     {
-        public string time;
-        public string value;
-        public string name;
-        public string unit;
-        public string valueType;
-        public string device;
-
-        public LogDataSet(XmlNode xNode)
-        {
-            time = xNode.SelectSingleNode("./t").InnerText;
-            value = xNode.SelectSingleNode("./value").InnerText;
-            name = xNode.SelectSingleNode("./name").InnerText;
-            unit = xNode.SelectSingleNode("./unit").InnerText;
-            valueType = xNode.SelectSingleNode("./valueType").InnerText;
-            device = xNode.SelectSingleNode("./device").InnerText;
-        }
-
-        public Dictionary<string, string> ToDict()
-        {
-            Dictionary<string, string> dictionary = new Dictionary<string, string>();
-            dictionary.Add("time", time);
-            dictionary.Add("value", value);
-            dictionary.Add("name", name);
-            dictionary.Add("unit", unit);
-            dictionary.Add("valueType", valueType);
-            dictionary.Add("device", device);
-
-            return dictionary;
-        }
-
-        public override string ToString()
-        {
-            string ret_str = device + "/" + name + "\n";
-            foreach (var kvp in ToDict())
-            {
-                ret_str += String.Format("\t{0}: {1}\n", kvp.Key, kvp.Value);
-            }
-            return ret_str;
-        }
-    }
-    public AquasuiteSharedMemoryExportHelper(string in_filename)
-    {
-        this.new_data_dict = new Dictionary<string, Dictionary<string, dynamic>>();
+        this.filename = in_filename;
+        this.data_dict = new Dictionary<string, Dictionary<string, dynamic>>();
         this.mmapped_file = mmapped_file_from_filename(in_filename);
         this.accessor = accessor_from_mmapped_file(mmapped_file);
         update_data_dict();
 
         InitializeBackgroundWorker();
-        backgroundWorker1.RunWorkerAsync(in_filename);
+    }
+    public AquasuiteSharedMemoryExportHelper(string in_filename)
+    {
+        init_class_vars(in_filename);
+        start_worker();
     }
 
-    //public Dictionary<string, Dictionary<string, dynamic>> 
+    public void start_worker()
+    {
+        backgroundWorker1.RunWorkerAsync(filename);
+    }
 
     public void cancel_worker()
     {
         this.backgroundWorker1.CancelAsync();
     }
+
+    public void update_filename(string in_filename)
+    {
+        cancel_worker();
+        init_class_vars(in_filename);
+        start_worker();
+    }
+
     public void InitializeBackgroundWorker()
     {
         this.backgroundWorker1 = new System.ComponentModel.BackgroundWorker();
@@ -101,6 +76,8 @@ public class AquasuiteSharedMemoryExportHelper
 
     private void backgroundWorker1_DoWork(object sender, DoWorkEventArgs e)
     {
+        // Have a background worker start setting the data dict automatically
+
         // Get the BackgroundWorker that raised this event.
         BackgroundWorker worker = sender as BackgroundWorker;
         
@@ -123,7 +100,7 @@ public class AquasuiteSharedMemoryExportHelper
 
                 XmlDocument xmlDoc = xml_doc_from_xml_string(result_string);
 
-                this.new_data_dict = get_dict_from_xml_doc(xmlDoc);
+                this.data_dict = get_dict_from_xml_doc(xmlDoc);
             }
             System.Threading.Thread.Sleep(1000);
         }
@@ -161,20 +138,6 @@ public class AquasuiteSharedMemoryExportHelper
         return doc;
     }
 
-    public Dictionary<string, LogDataSet> get_log_dataset_dict_from_xml(XmlDocument xmlDoc)
-    {
-        Dictionary<string, LogDataSet> dict = new Dictionary<string, LogDataSet>();
-        XmlElement root = xmlDoc.DocumentElement;
-        XmlNodeList nodeList = root.SelectNodes("//Logdata/LogDataSet");
-        foreach (XmlNode xNode in nodeList)
-        {
-            //Console.WriteLine(xNode.InnerXml);
-            LogDataSet tempLogDataSet = new LogDataSet(xNode);
-            dict.Add(tempLogDataSet.device + "/" + tempLogDataSet.name, tempLogDataSet);
-        }
-        return dict;
-    }
-
     public Dictionary<string, Dictionary<string, dynamic>> get_dict_from_xml_doc(XmlDocument xmlDoc)
     {
         Dictionary<string, Dictionary<string, dynamic>> device_name_to_values_dict = new Dictionary<string, Dictionary<string, dynamic>>();
@@ -198,29 +161,18 @@ public class AquasuiteSharedMemoryExportHelper
     {
         string xmlString = get_xml_string_from_acessor(accessor);
         XmlDocument xmlDoc = xml_doc_from_xml_string(xmlString);
-        this.data_dict = get_log_dataset_dict_from_xml(xmlDoc);
+        this.data_dict = get_dict_from_xml_doc(xmlDoc);
     }
 
-    public Dictionary<string, Dictionary<string, string>> update_and_return_data_dict()
+    public Dictionary<string, Dictionary<string, dynamic>> update_and_return_data_dict()
     {
         update_data_dict();
-        return get_data_dicts();
+        return this.data_dict;
     }
 
-    public Dictionary<string, string> get_single_dict_from_key(string str_key)
+    public Dictionary<string, dynamic> get_single_dict_from_key(string str_key)
     {
-        LogDataSet log_obj = data_dict[str_key];
-
-        return log_obj.ToDict();
-    }
-    public Dictionary<string, Dictionary<string, string>> get_data_dicts()
-    {
-        Dictionary<string, Dictionary<string, string>> dictionary = new Dictionary<string, Dictionary<string, string>>();
-        foreach (var kvp in data_dict)
-        {
-            dictionary.Add(kvp.Key, kvp.Value.ToDict());
-        }
-        return dictionary;
+        return this.data_dict["str_key"];
     }
 
     public List<string> get_data_dict_keys()
