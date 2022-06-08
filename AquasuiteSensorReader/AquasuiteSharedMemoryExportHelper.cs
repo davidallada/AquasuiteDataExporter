@@ -1,4 +1,5 @@
 ﻿using System;
+using System.ComponentModel;
 using System.IO.MemoryMappedFiles;
 using System.Text.RegularExpressions;
 using System.Xml;
@@ -9,6 +10,10 @@ public class AquasuiteSharedMemoryExportHelper
     public MemoryMappedFile mmapped_file;
     public MemoryMappedViewAccessor accessor;
     public Dictionary<string, LogDataSet> data_dict;
+    public Dictionary<string, Dictionary<string, dynamic>> new_data_dict;
+    private System.ComponentModel.BackgroundWorker backgroundWorker1;
+
+    private readonly object data_dict_lock = new object();
 
     public class LogDataSet
     {
@@ -54,11 +59,85 @@ public class AquasuiteSharedMemoryExportHelper
     }
     public AquasuiteSharedMemoryExportHelper(string in_filename)
     {
-        filename = in_filename;
-        mmapped_file = mmapped_file_from_filename(in_filename);
-        accessor = accessor_from_mmapped_file(mmapped_file);
+        this.new_data_dict = new Dictionary<string, Dictionary<string, dynamic>>();
+        this.mmapped_file = mmapped_file_from_filename(in_filename);
+        this.accessor = accessor_from_mmapped_file(mmapped_file);
         update_data_dict();
+
+        InitializeBackgroundWorker();
+        backgroundWorker1.RunWorkerAsync(in_filename);
     }
+
+    public void cancel_worker()
+    {
+        this.backgroundWorker1.CancelAsync();
+    }
+    public void InitializeBackgroundWorker()
+    {
+        this.backgroundWorker1 = new System.ComponentModel.BackgroundWorker();
+        backgroundWorker1.DoWork += new DoWorkEventHandler(backgroundWorker1_DoWork);
+        backgroundWorker1.WorkerReportsProgress = true;
+        backgroundWorker1.WorkerSupportsCancellation = true;
+        //backgroundWorker1.RunWorkerCompleted += new RunWorkerCompletedEventHandler(backgroundWorker1_RunWorkerCompleted);
+        //backgroundWorker1.ProgressChanged += new ProgressChangedEventHandler(backgroundWorker1_ProgressChanged);
+    }
+
+    private void backgroundWorker1_DoWork(object sender, DoWorkEventArgs e)
+    {
+        // Get the BackgroundWorker that raised this event.
+        BackgroundWorker worker = sender as BackgroundWorker;
+        
+        // Get the filename of the file to read from
+        string file_name = (string)e.Argument;
+        MemoryMappedFile mem_mapped_file = MemoryMappedFile.OpenExisting(file_name);
+        MemoryMappedViewAccessor mem_accessor = mem_mapped_file.CreateViewAccessor();
+
+        while (true)
+        {
+            if (worker.CancellationPending == true)
+            {
+                e.Cancel = true;
+                break;
+            }
+            else
+            {
+                var length = (int)mem_accessor.Capacity;
+                var rawBytes = new byte[length];
+
+                mem_accessor.ReadArray(0, rawBytes, 0, length);
+                var byte_str = System.Text.UTF8Encoding.UTF8.GetString(rawBytes);
+
+                //For some reason, the header starts with garbled bytes. Not sure why. Remove all of them
+                var result_string = Regex.Replace(byte_str, @"^.*?<\?xml", @"<?xml");
+
+                XmlDocument xmlDoc = new XmlDocument();
+                xmlDoc.LoadXml(result_string);
+
+                Dictionary<string, Dictionary<string, dynamic>> device_name_to_values_dict = new Dictionary<string, Dictionary<string, dynamic>>();
+                XmlElement root = xmlDoc.DocumentElement;
+                XmlNodeList nodeList = root.SelectNodes("//Logdata/LogDataSet");
+                foreach (XmlNode xNode in nodeList)
+                {
+                    Dictionary<string, dynamic> innerDict = new Dictionary<string, dynamic>();
+                    innerDict.Add("time", xNode.SelectSingleNode("./t").InnerText);
+                    innerDict.Add("value", xNode.SelectSingleNode("./value").InnerText);
+                    innerDict.Add("name", xNode.SelectSingleNode("./name").InnerText);
+                    innerDict.Add("unit", xNode.SelectSingleNode("./unit").InnerText);
+                    innerDict.Add("valueType", xNode.SelectSingleNode("./valueType").InnerText);
+                    innerDict.Add("device", xNode.SelectSingleNode("./device").InnerText);
+                    device_name_to_values_dict.Add(innerDict["device"] + "/" + innerDict["name"], innerDict);
+                }
+                lock (data_dict_lock)
+                {
+                    this.new_data_dict = device_name_to_values_dict;
+                }
+            }
+            System.Threading.Thread.Sleep(1000);
+        }
+        // Temp, dont have to really return anything here
+        e.Result = "";
+    }
+
 
     public MemoryMappedFile mmapped_file_from_filename(string in_filename)
     {
@@ -108,7 +187,7 @@ public class AquasuiteSharedMemoryExportHelper
     {
         string xmlString = get_xml_string_from_acessor(accessor);
         XmlDocument xmlDoc = xml_doc_from_xml_string(xmlString);
-        data_dict = get_log_dataset_dict_from_xml(xmlDoc);
+        this.data_dict = get_log_dataset_dict_from_xml(xmlDoc);
     }
 
     public Dictionary<string, Dictionary<string, string>> update_and_return_data_dict()
@@ -139,6 +218,16 @@ public class AquasuiteSharedMemoryExportHelper
 
         return list;
     }
+
+    public void print_all_data()
+    {
+        foreach (var kvp in data_dict)
+        {
+            Console.WriteLine(kvp.Value.ToString());
+        }
+    }
+
+    // BackgroundWorker with WorkerReportsProgress property and a DoWork and ProgressChanged function
 
 }
 

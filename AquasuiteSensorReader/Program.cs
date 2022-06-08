@@ -9,10 +9,21 @@ class Program
     {
         var fileName = "testexport";
         AquasuiteSharedMemoryExportHelper memory_helper = new AquasuiteSharedMemoryExportHelper(fileName);
-        string xmlString = memory_helper.get_xml_string_from_acessor(memory_helper.accessor);
-        //Console.WriteLine(xmlString);
-        XmlDocument xmlDoc = memory_helper.xml_doc_from_xml_string(xmlString);
-        var dict = memory_helper.get_log_dataset_dict_from_xml(xmlDoc);
-        var keys = memory_helper.get_data_dict_keys();
+        // memory_helper.print_all_data();
+        //System.Threading.Thread.Sleep(5000);
+        // memory_helper.update_data_dict();
+        //memory_helper.print_all_data();
+        for (int i = 0; i < 10; i++)
+        {
+            if (memory_helper.new_data_dict.ContainsKey("QUADRO/Water Temp"))
+            {
+                Console.WriteLine(memory_helper.new_data_dict["QUADRO/Water Temp"]["time"]);
+            }
+            System.Threading.Thread.Sleep(5000);
+        }
+
+        memory_helper.cancel_worker();
+
+
     }
 }
