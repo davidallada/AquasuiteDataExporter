@@ -6,14 +6,31 @@ using System.Xml;
 
 public class AquasuiteSharedMemoryExportHelper
 {
+    private readonly object data_dict_lock = new object();
     private string filename;
     public MemoryMappedFile mmapped_file;
     public MemoryMappedViewAccessor accessor;
     public Dictionary<string, LogDataSet> data_dict;
-    public Dictionary<string, Dictionary<string, dynamic>> new_data_dict;
+    private Dictionary<string, Dictionary<string, dynamic>> _new_data_dict = new Dictionary<string, Dictionary<string, dynamic>>();
+    public Dictionary<string, Dictionary<string, dynamic>> new_data_dict
+    {
+        get
+        {
+            lock (data_dict_lock)
+            {
+                return _new_data_dict;
+            }
+        }
+        set
+        {
+            lock (data_dict_lock)
+            {
+                _new_data_dict = value;
+            }
+        }
+    }
     private System.ComponentModel.BackgroundWorker backgroundWorker1;
 
-    private readonly object data_dict_lock = new object();
 
     public class LogDataSet
     {
@@ -68,6 +85,8 @@ public class AquasuiteSharedMemoryExportHelper
         backgroundWorker1.RunWorkerAsync(in_filename);
     }
 
+    //public Dictionary<string, Dictionary<string, dynamic>> 
+
     public void cancel_worker()
     {
         this.backgroundWorker1.CancelAsync();
@@ -78,8 +97,6 @@ public class AquasuiteSharedMemoryExportHelper
         backgroundWorker1.DoWork += new DoWorkEventHandler(backgroundWorker1_DoWork);
         backgroundWorker1.WorkerReportsProgress = true;
         backgroundWorker1.WorkerSupportsCancellation = true;
-        //backgroundWorker1.RunWorkerCompleted += new RunWorkerCompletedEventHandler(backgroundWorker1_RunWorkerCompleted);
-        //backgroundWorker1.ProgressChanged += new ProgressChangedEventHandler(backgroundWorker1_ProgressChanged);
     }
 
     private void backgroundWorker1_DoWork(object sender, DoWorkEventArgs e)
@@ -101,43 +118,18 @@ public class AquasuiteSharedMemoryExportHelper
             }
             else
             {
-                var length = (int)mem_accessor.Capacity;
-                var rawBytes = new byte[length];
-
-                mem_accessor.ReadArray(0, rawBytes, 0, length);
-                var byte_str = System.Text.UTF8Encoding.UTF8.GetString(rawBytes);
-
                 //For some reason, the header starts with garbled bytes. Not sure why. Remove all of them
-                var result_string = Regex.Replace(byte_str, @"^.*?<\?xml", @"<?xml");
+                var result_string = get_xml_string_from_acessor(mem_accessor);
 
-                XmlDocument xmlDoc = new XmlDocument();
-                xmlDoc.LoadXml(result_string);
+                XmlDocument xmlDoc = xml_doc_from_xml_string(result_string);
 
-                Dictionary<string, Dictionary<string, dynamic>> device_name_to_values_dict = new Dictionary<string, Dictionary<string, dynamic>>();
-                XmlElement root = xmlDoc.DocumentElement;
-                XmlNodeList nodeList = root.SelectNodes("//Logdata/LogDataSet");
-                foreach (XmlNode xNode in nodeList)
-                {
-                    Dictionary<string, dynamic> innerDict = new Dictionary<string, dynamic>();
-                    innerDict.Add("time", xNode.SelectSingleNode("./t").InnerText);
-                    innerDict.Add("value", xNode.SelectSingleNode("./value").InnerText);
-                    innerDict.Add("name", xNode.SelectSingleNode("./name").InnerText);
-                    innerDict.Add("unit", xNode.SelectSingleNode("./unit").InnerText);
-                    innerDict.Add("valueType", xNode.SelectSingleNode("./valueType").InnerText);
-                    innerDict.Add("device", xNode.SelectSingleNode("./device").InnerText);
-                    device_name_to_values_dict.Add(innerDict["device"] + "/" + innerDict["name"], innerDict);
-                }
-                lock (data_dict_lock)
-                {
-                    this.new_data_dict = device_name_to_values_dict;
-                }
+                this.new_data_dict = get_dict_from_xml_doc(xmlDoc);
             }
             System.Threading.Thread.Sleep(1000);
         }
         // Temp, dont have to really return anything here
         e.Result = "";
     }
-
 
     public MemoryMappedFile mmapped_file_from_filename(string in_filename)
     {
@@ -181,6 +173,25 @@ public class AquasuiteSharedMemoryExportHelper
             dict.Add(tempLogDataSet.device + "/" + tempLogDataSet.name, tempLogDataSet);
         }
         return dict;
+    }
+
+    public Dictionary<string, Dictionary<string, dynamic>> get_dict_from_xml_doc(XmlDocument xmlDoc)
+    {
+        Dictionary<string, Dictionary<string, dynamic>> device_name_to_values_dict = new Dictionary<string, Dictionary<string, dynamic>>();
+        XmlElement root = xmlDoc.DocumentElement;
+        XmlNodeList nodeList = root.SelectNodes("//Logdata/LogDataSet");
+        foreach (XmlNode xNode in nodeList)
+        {
+            Dictionary<string, dynamic> innerDict = new Dictionary<string, dynamic>();
+            innerDict.Add("time", xNode.SelectSingleNode("./t").InnerText);
+            innerDict.Add("value", xNode.SelectSingleNode("./value").InnerText);
+            innerDict.Add("name", xNode.SelectSingleNode("./name").InnerText);
+            innerDict.Add("unit", xNode.SelectSingleNode("./unit").InnerText);
+            innerDict.Add("valueType", xNode.SelectSingleNode("./valueType").InnerText);
+            innerDict.Add("device", xNode.SelectSingleNode("./device").InnerText);
+            device_name_to_values_dict.Add(innerDict["device"] + "/" + innerDict["name"], innerDict);
+        }
+        return device_name_to_values_dict;
     }
 
     public void update_data_dict()
