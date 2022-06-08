@@ -205,9 +205,21 @@ public class AquasuiteSharedMemoryExportHelper
         return this.data_dict;
     }
 
-    public List<string> get_data_dict_keys()
+    public List<string> get_device_keys()
     {
         List<string> list = new List<string>(data_dict.Keys);
+
+        return list;
+    }
+
+    public List<string> get_sensor_keys_from_device_key(string device_key)
+    {
+        List<string> list = new List<string>();
+
+        if (data_dict.ContainsKey(device_key))
+        {
+            return list.Concat(data_dict[device_key].Keys).ToList();
+        }
 
         return list;
     }
@@ -228,5 +240,6 @@ public class AquasuiteSharedMemoryExportHelper
             }
         }
     }
+
 }
 
