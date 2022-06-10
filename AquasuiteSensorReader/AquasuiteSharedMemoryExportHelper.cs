@@ -52,6 +52,10 @@ public class AquasuiteSharedMemoryExportHelper
         this.filename = in_filename;
         this.data_dict = new Dictionary<string, Dictionary<string, Dictionary<string, dynamic>>>();
         this.mmapped_file = mmapped_file_from_filename(in_filename);
+        if (this.mmapped_file == null)
+        {
+            return;
+        }
         this.accessor = accessor_from_mmapped_file(mmapped_file);
         update_data_dict();
 
@@ -60,6 +64,10 @@ public class AquasuiteSharedMemoryExportHelper
     public AquasuiteSharedMemoryExportHelper(string in_filename)
     {
         init_class_vars(in_filename);
+        if (this.mmapped_file == null)
+        {
+            return;
+        }
         start_worker();
     }
 
@@ -78,6 +86,11 @@ public class AquasuiteSharedMemoryExportHelper
         cancel_worker();
         init_class_vars(in_filename);
         start_worker();
+    }
+
+    public string get_filename()
+    {
+        return this.filename;
     }
 
     public void updateThreadWaitTime(int milliseconds)
@@ -136,7 +149,15 @@ public class AquasuiteSharedMemoryExportHelper
 
     public MemoryMappedFile mmapped_file_from_filename(string in_filename)
     {
-        return MemoryMappedFile.OpenExisting(in_filename);
+        try
+        {
+            return MemoryMappedFile.OpenExisting(in_filename);
+        }
+        catch (System.IO.FileNotFoundException)
+        {
+            this.data_dict = new Dictionary<string, Dictionary<string, Dictionary<string, dynamic>>>();
+        }
+        return null;
     }
 
     public MemoryMappedViewAccessor accessor_from_mmapped_file(MemoryMappedFile mmap_file)
@@ -262,7 +283,7 @@ public class AquasuiteSharedMemoryExportHelper
             var device_dict = this.data_dict[device_name];
             if (device_dict.ContainsKey(sensor_name))
             {
-                var sensor_dict =  device_dict[sensor_name];
+                var sensor_dict = device_dict[sensor_name];
                 if (sensor_dict.ContainsKey(field_name))
                 {
                     return sensor_dict[field_name].ToString();
@@ -271,6 +292,27 @@ public class AquasuiteSharedMemoryExportHelper
         }
 
         return return_str;
+    }
+
+    public Dictionary<string, Dictionary<string, List<string>>> get_devices_sensor_fields_dict()
+    {
+        Dictionary<string, Dictionary<string, List<string>>> dict = new Dictionary<string, Dictionary<string, List<string>>>();
+        foreach (var device_dict in this.data_dict)
+        {
+            var new_sensor_dict = new Dictionary<string, List<string>>();
+            dict.Add(device_dict.Key, new_sensor_dict);
+            foreach (var sensor_dict in device_dict.Value)
+            {
+                var new_field_list = new List<string>();
+                dict[device_dict.Key].Add(sensor_dict.Key, new_field_list);
+                foreach (var sensor_kvp in sensor_dict.Value)
+                {
+                    dict[device_dict.Key][sensor_dict.Key].Add(sensor_kvp.Key);
+                }
+
+            }
+        }
+        return dict;
     }
 }
 

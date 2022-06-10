@@ -9,6 +9,9 @@ class Program
     {
         var fileName = "testexport";
         AquasuiteSharedMemoryExportHelper memory_helper = new AquasuiteSharedMemoryExportHelper(fileName);
+        var dictt = memory_helper.get_devices_sensor_fields_dict();
+        Console.WriteLine(dictt["QUADRO"]["Water Temp"][0]);
+        return;
         for (int i = 0; i < 10; i++)
         {
             if (memory_helper.data_dict.ContainsKey("QUADRO"))
