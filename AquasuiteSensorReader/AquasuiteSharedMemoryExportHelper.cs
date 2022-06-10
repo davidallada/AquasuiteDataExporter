@@ -8,6 +8,7 @@ using System.Xml;
 
 public class AquasuiteSharedMemoryExportHelper
 {
+    private readonly int DEFAULT_THREAD_WAIT_TIME = 1000;
     private readonly object data_dict_lock = new object();
     private string filename;
     public MemoryMappedFile mmapped_file;
@@ -46,34 +47,87 @@ public class AquasuiteSharedMemoryExportHelper
     }
     private System.ComponentModel.BackgroundWorker backgroundWorker1;
 
-
-    private void init_class_vars(string in_filename)
+    public static bool is_filename_valid(string in_filename)
     {
-        this.filename = in_filename;
+        // Returns whether we can find the given filename in shared memory
+        if (String.IsNullOrEmpty(in_filename))
+        {
+            return false;
+        }
+        try
+        {
+            MemoryMappedFile.OpenExisting(in_filename);
+        }
+        catch (System.IO.FileNotFoundException)
+        {
+            return false;
+        }
+        return true;
+    }
+    private void clear_vars()
+    {
+        if (this.backgroundWorker1 != null)
+        {
+            cancel_worker();
+            this.backgroundWorker1 = null;
+        }
+        this.filename = null;
+        this.mmapped_file = null;
+        this.accessor = null;
+        this.thread_wait_time = this.DEFAULT_THREAD_WAIT_TIME;
         this.data_dict = new Dictionary<string, Dictionary<string, Dictionary<string, dynamic>>>();
-        this.mmapped_file = mmapped_file_from_filename(in_filename);
-        if (this.mmapped_file == null)
+    }
+
+    private bool set_mmapped_file_and_accessor_from_filename(string in_filename)
+    {
+        // Returns whether we can find the given filename in shared memory
+        if (String.IsNullOrEmpty(in_filename))
+        {
+            return false;
+        }
+        try
+        {
+            this.mmapped_file = MemoryMappedFile.OpenExisting(in_filename);
+            this.accessor = this.mmapped_file.CreateViewAccessor();
+        }
+        catch (System.IO.FileNotFoundException)
+        {
+            return false;
+        }
+        return true;
+    }
+    public void init_or_update_settings(string in_filename, int in_thread_wait_time = 1000, bool start_background_worker = true)
+    {
+        clear_vars();
+        if (!is_filename_valid(in_filename))
         {
             return;
         }
-        this.accessor = accessor_from_mmapped_file(mmapped_file);
+        this.filename = in_filename;
+        this.thread_wait_time = in_thread_wait_time;
+        bool mapped_file_success = set_mmapped_file_and_accessor_from_filename(this.filename);
+        if (!mapped_file_success)
+        {
+            clear_vars();
+            return;
+        }
+        this.data_dict = new Dictionary<string, Dictionary<string, Dictionary<string, dynamic>>>();
         update_data_dict();
 
         InitializeBackgroundWorker();
-    }
-    public AquasuiteSharedMemoryExportHelper(string in_filename)
-    {
-        init_class_vars(in_filename);
-        if (this.mmapped_file == null)
+        if (start_background_worker)
         {
-            return;
+            start_worker();
         }
-        start_worker();
+    }
+    public AquasuiteSharedMemoryExportHelper(string in_filename, int in_thread_wait_time = 1000, bool start_background_worker = true)
+    {
+        init_or_update_settings(in_filename, in_thread_wait_time, start_background_worker);
     }
 
     public void start_worker()
     {
-        backgroundWorker1.RunWorkerAsync(filename);
+        this.backgroundWorker1.RunWorkerAsync();
     }
 
     public void cancel_worker()
@@ -81,25 +135,11 @@ public class AquasuiteSharedMemoryExportHelper
         this.backgroundWorker1.CancelAsync();
     }
 
-    public void update_filename(string in_filename)
-    {
-        cancel_worker();
-        init_class_vars(in_filename);
-        start_worker();
-    }
-
     public string get_filename()
     {
         return this.filename;
     }
 
-    public void updateThreadWaitTime(int milliseconds)
-    {
-        cancel_worker();
-        init_class_vars(this.filename);
-        this.thread_wait_time = milliseconds;
-        start_worker();
-    }
     public int getThreadWaitTime(int milliseconds)
     {
         return this.thread_wait_time;
@@ -120,10 +160,8 @@ public class AquasuiteSharedMemoryExportHelper
         // Get the BackgroundWorker that raised this event.
         BackgroundWorker worker = sender as BackgroundWorker;
 
-        // Get the filename of the file to read from
-        string file_name = (string)e.Argument;
-        MemoryMappedFile mem_mapped_file = MemoryMappedFile.OpenExisting(file_name);
-        MemoryMappedViewAccessor mem_accessor = mem_mapped_file.CreateViewAccessor();
+        string file_name = this.filename;
+        MemoryMappedViewAccessor mem_accessor = this.accessor;
 
         while (true)
         {
@@ -145,24 +183,6 @@ public class AquasuiteSharedMemoryExportHelper
         }
         // Temp, dont have to really return anything here
         e.Result = "";
-    }
-
-    public MemoryMappedFile mmapped_file_from_filename(string in_filename)
-    {
-        try
-        {
-            return MemoryMappedFile.OpenExisting(in_filename);
-        }
-        catch (System.IO.FileNotFoundException)
-        {
-            this.data_dict = new Dictionary<string, Dictionary<string, Dictionary<string, dynamic>>>();
-        }
-        return null;
-    }
-
-    public MemoryMappedViewAccessor accessor_from_mmapped_file(MemoryMappedFile mmap_file)
-    {
-        return mmap_file.CreateViewAccessor();
     }
 
     public string get_xml_string_from_acessor(MemoryMappedViewAccessor accessor)
@@ -217,6 +237,11 @@ public class AquasuiteSharedMemoryExportHelper
 
     public void update_data_dict()
     {
+        if (this.mmapped_file == null || this.filename == null || this.accessor == null)
+        {
+            this.data_dict = new Dictionary<string, Dictionary<string, Dictionary<string, dynamic>>>();
+            return;
+        }
         string xmlString = get_xml_string_from_acessor(accessor);
         XmlDocument xmlDoc = xml_doc_from_xml_string(xmlString);
         this.data_dict = get_dict_from_xml_doc(xmlDoc);

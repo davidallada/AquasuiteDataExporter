@@ -9,20 +9,29 @@ class Program
     {
         var fileName = "testexport";
         AquasuiteSharedMemoryExportHelper memory_helper = new AquasuiteSharedMemoryExportHelper(fileName);
-        var dictt = memory_helper.get_devices_sensor_fields_dict();
-        Console.WriteLine(dictt["QUADRO"]["Water Temp"][0]);
-        return;
+        //var dictt = memory_helper.get_devices_sensor_fields_dict();
+        //Console.WriteLine(dictt["QUADRO"]["Water Temp"][0]);
+        for (int i = 0; i < 5; i++)
+        {
+            Console.WriteLine(memory_helper.get_single_data_point("QUADRO", "Water Temp", "time"));
+            System.Threading.Thread.Sleep(1000);
+        }
+        Console.WriteLine("Update at half of th speed now");
+        memory_helper.init_or_update_settings(fileName, 2000);
         for (int i = 0; i < 10; i++)
         {
-            if (memory_helper.data_dict.ContainsKey("QUADRO"))
-            {
-                Console.WriteLine(memory_helper.data_dict["QUADRO"]["Water Temp"]["time"]);
-                memory_helper.print_data_dict();
-            }
-            System.Threading.Thread.Sleep(5000);
+            Console.WriteLine(memory_helper.get_single_data_point("QUADRO", "Water Temp", "time"));
+            System.Threading.Thread.Sleep(1000);
         }
 
-        memory_helper.cancel_worker();
+        memory_helper.init_or_update_settings(fileName, 1000);
+        for (int i = 0; i < 10; i++)
+        {
+            memory_helper.update_and_return_data_dict();
+            System.Threading.Thread.Sleep(1000);
+        }
+
+        //memory_helper.cancel_worker();
 
 
     }
